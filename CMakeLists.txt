@@ -17,9 +17,11 @@ project(
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
+set(GLFW_USE_WAYLAND ON)
 if(APPLE)
   add_compile_options(-mmacosx-version-min=10.15)
 endif()
+
 # ##############################################################################
 # Modules and scripts   ##
 # ##############################################################################
@@ -65,16 +67,36 @@ set(${PROJECT_NAME}_INSTALL_CMAKEDIR
 # Dependencies  ##
 # ##############################################################################
 
-# find_package(spdlog REQUIRED) find_package(absl REQUIRED)
-
-if(ENABLE_TESTING)
-  find_package(GTest REQUIRED)
-  include(GoogleTest)
-  enable_testing()
+if(CMAKE_BUILD_TYPE STREQUAL "Debug")
+  set(WGPU_NATIVE_LIB_TYPE debug)
+else()
+  set(WGPU_NATIVE_LIB_TYPE release)
 endif()
 
 # Boost
 find_package(Boost REQUIRED)
+
+# GLFW
+find_package(glfw3 REQUIRED)
+find_package(ECM REQUIRED NO_MODULE)
+list(APPEND CMAKE_MODULE_PATH "${ECM_MODULE_PATH}")
+
+find_package(Wayland REQUIRED Client Cursor Egl)
+find_package(WaylandScanner REQUIRED)
+find_package(WaylandProtocols 1.15 REQUIRED)
+
+list(APPEND glfw_PKG_DEPS "wayland-egl")
+
+list(APPEND glfw_INCLUDE_DIRS "${Wayland_INCLUDE_DIRS}")
+list(APPEND glfw_LIBRARIES "${Wayland_LIBRARIES}")
+
+# find_package(XKBCommon REQUIRED) list(APPEND glfw_INCLUDE_DIRS
+# "${XKBCOMMON_INCLUDE_DIRS}")
+
+include(CheckIncludeFiles)
+include(CheckFunctionExists)
+check_include_files(xkbcommon/xkbcommon-compose.h HAVE_XKBCOMMON_COMPOSE_H)
+check_function_exists(memfd_create HAVE_MEMFD_CREATE)
 
 # ##############################################################################
 # Targets  ##
@@ -82,8 +104,10 @@ find_package(Boost REQUIRED)
 
 # Use the project root to find includes
 include_directories(${PROJECT_SOURCE_DIR})
+include_directories("${GLFW_SOURCE_DIR}/deps")
 
 add_subdirectory(src)
+add_subdirectory(webgpu)
 
 # ##############################################################################
 # Packaging ##

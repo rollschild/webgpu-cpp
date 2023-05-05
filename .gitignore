@@ -3,6 +3,8 @@
 build/
 testing/Testing/
 
+webgpu/
+
 # Prerequisites
 *.d
 

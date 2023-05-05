@@ -21,7 +21,7 @@
         lib = nixpkgs.lib;
       in {
         devShell = pkgs.mkShell rec {
-          name = "cpp";
+          name = "webgpu-cpp";
 
           packages = with pkgs; [ ];
 
@@ -31,14 +31,28 @@
             cmake
             cmakeCurses
             boost
-            catch2_3
+            glfw-wayland
+            wayland
+
+            # X11 dependencies
+            xorg.libX11
+            xorg.libXrandr
+            xorg.libXinerama
+            xorg.libXcursor
+            xorg.libXi
+
+            ecm
+            libGL
+            libxkbcommon
+            wayland-protocols
+            extra-cmake-modules
+            libffi
 
             clang-tools
             llvm.clang
-
-            # Development time dependencies
-            gtest
           ];
+
+          cmakeFlags = [ "-DGLFW_USE_WAYLAND=ON" ];
 
           buildInputs = with pkgs;
             [
