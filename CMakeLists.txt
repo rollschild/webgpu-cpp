@@ -17,7 +17,7 @@ project(
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
-set(GLFW_USE_WAYLAND ON)
+set(GLFW_USE_WAYLAND 1)
 if(APPLE)
   add_compile_options(-mmacosx-version-min=10.15)
 endif()
@@ -108,6 +108,8 @@ include_directories("${GLFW_SOURCE_DIR}/deps")
 
 add_subdirectory(src)
 add_subdirectory(webgpu)
+# add_library(webgpu SHARED IMPORTED GLOBAL)
+add_subdirectory(glfw3webgpu)
 
 # ##############################################################################
 # Packaging ##
