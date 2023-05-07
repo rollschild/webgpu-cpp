@@ -33,6 +33,7 @@
             boost
             glfw-wayland
             wayland
+            python3
 
             # X11 dependencies
             xorg.libX11

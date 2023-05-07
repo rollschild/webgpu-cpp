@@ -1,7 +1,7 @@
 # CMake References:
 # https://github.com/Lectem/cpp-boilerplate/blob/master/CMakeLists.txt
 
-cmake_minimum_required(VERSION 3.17)
+cmake_minimum_required(VERSION 3.24)
 
 if(CMAKE_SOURCE_DIR STREQUAL CMAKE_BINARY_DIR)
   message(
@@ -27,6 +27,8 @@ endif()
 # ##############################################################################
 
 # Standard CMake modules
+
+include(utils.cmake)
 
 include(CTest) # Must be called before adding tests but after calling project().
                # This automatically calls enable_testing() and configures ctest
