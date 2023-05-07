@@ -1,7 +1,7 @@
 # CMake References:
 # https://github.com/Lectem/cpp-boilerplate/blob/master/CMakeLists.txt
 
-cmake_minimum_required(VERSION 3.17)
+cmake_minimum_required(VERSION 3.25)
 
 if(CMAKE_SOURCE_DIR STREQUAL CMAKE_BINARY_DIR)
   message(
@@ -106,10 +106,10 @@ check_function_exists(memfd_create HAVE_MEMFD_CREATE)
 include_directories(${PROJECT_SOURCE_DIR})
 include_directories("${GLFW_SOURCE_DIR}/deps")
 
-add_subdirectory(src)
 add_subdirectory(webgpu)
-# add_library(webgpu SHARED IMPORTED GLOBAL)
 add_subdirectory(glfw3webgpu)
+add_subdirectory(src)
+# add_library(webgpu SHARED IMPORTED GLOBAL)
 
 # ##############################################################################
 # Packaging ##
