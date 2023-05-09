@@ -1,7 +1,7 @@
 # CMake References:
 # https://github.com/Lectem/cpp-boilerplate/blob/master/CMakeLists.txt
 
-cmake_minimum_required(VERSION 3.25)
+cmake_minimum_required(VERSION 3.24)
 
 if(CMAKE_SOURCE_DIR STREQUAL CMAKE_BINARY_DIR)
   message(
