@@ -42,6 +42,13 @@
             xorg.libXcursor
             xorg.libXi
 
+            # vulkan 
+            glslang # or shaderc
+            vulkan-headers
+            vulkan-loader
+            vulkan-validation-layers # maybe?
+            vulkan-tools
+
             ecm
             libGL
             libxkbcommon
@@ -62,6 +69,9 @@
             ];
 
           CXXFLAGS = "-std=c++20";
+          LD_LIBRARY_PATH = "${pkgs.vulkan-loader}/lib";
+          VULKAN_SDK =
+            "${pkgs.vulkan-validation-layers}/share/vulkan/explicit_layer.d";
           # CPATH = builtins.concatStringsSep ":" [
           # (lib.makeSearchPathOutput "dev" "include" [ llvm.libcxx ])
           # (lib.makeSearchPath "resource-root/include" [ llvm.clang ])

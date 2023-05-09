@@ -1,11 +1,10 @@
-#include "glfw3webgpu/glfw3webgpu.h"
 #include <GLFW/glfw3.h>
 #include <cassert>
 #include <cstddef>
+#include <glfw3webgpu.h>
 #include <iostream>
 #include <vector>
 #include <webgpu/webgpu.h>
-#include <webgpu/wgpu.h> // Non-standard from wgpu-native
 
 /*
  * Util function to get a WebGPU adapter
@@ -112,11 +111,11 @@ int main() {
   }
 
   // 5. clean up the WebGPU instance
-  wgpuInstanceDrop(instance);
+  wgpuInstanceRelease(instance);
 
   // Destroy the adapter
   // This function is wgpu-native specific
-  wgpuAdapterDrop(adapter);
+  wgpuAdapterRelease(adapter);
 
   glfwDestroyWindow(window);
   glfwTerminate();
