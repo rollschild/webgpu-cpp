@@ -326,6 +326,39 @@ int main() {
 
     inspectDevice(device);
 
+    WGPUQueue queue = wgpuDeviceGetQueue(device);
+
+#ifdef WEBGPU_BACKEND_DAWN
+    auto onQueueWorkDone = [](WGPUQueueWorkDoneStatus status,
+                              void *ptrUserData) {
+        std::cout << "Queue work finished with status: " << status << std::endl;
+    };
+    wgpuQueueOnSubmittedWorkDone(queue, 0 /* Non-standard arg for Dawn */,
+                                 onQueueWorkDone, nullptr /* ptrUserData */);
+#endif // WEBGPU_BACKEND_DAWN
+
+    WGPUCommandEncoderDescriptor encoderDesc{};
+    encoderDesc.nextInChain = nullptr;
+    encoderDesc.label = "My command encoder";
+    WGPUCommandEncoder encoder =
+        wgpuDeviceCreateCommandEncoder(device, &encoderDesc);
+    // use the encoder to write instructions
+    wgpuCommandEncoderInsertDebugMarker(encoder, "Do one thing");
+    wgpuCommandEncoderInsertDebugMarker(encoder, "Do another thing");
+
+    // generates the command from the encoder
+    WGPUCommandBufferDescriptor cmdBufferDesc{};
+    cmdBufferDesc.nextInChain = nullptr;
+    cmdBufferDesc.label = "Command buffer";
+    // this operation destroys `encoder`
+    WGPUCommandBuffer command =
+        wgpuCommandEncoderFinish(encoder, &cmdBufferDesc);
+
+    // submit the command queue
+    std::cout << "Submitting command..." << std::endl;
+    // destroys `command` buffer
+    wgpuQueueSubmit(queue, 1, &command);
+
     while (!glfwWindowShouldClose(window)) {
         glfwPollEvents();
     }
