@@ -275,6 +275,9 @@ int main() {
     // and we will _NOT_ use what it could set up by default for other APIs
     glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
 
+    // Tell the window to disable resizing
+    glfwWindowHint(GLFW_RESIZABLE, GLFW_FALSE);
+
     GLFWwindow *window =
         glfwCreateWindow(640, 480, "WebGPU for C++", NULL, NULL);
     if (!window) {
@@ -326,6 +329,8 @@ int main() {
 
     inspectDevice(device);
 
+    // Get the queue - Our WebGPU device has a single queue
+    // BUT in the future there might be multiple queues per device
     WGPUQueue queue = wgpuDeviceGetQueue(device);
 
 #ifdef WEBGPU_BACKEND_DAWN
@@ -337,6 +342,8 @@ int main() {
                                  onQueueWorkDone, nullptr /* ptrUserData */);
 #endif // WEBGPU_BACKEND_DAWN
 
+    // a WGPUCommandBuffer cannot be manually created
+    // a *command encoder* is needed
     WGPUCommandEncoderDescriptor encoderDesc{};
     encoderDesc.nextInChain = nullptr;
     encoderDesc.label = "My command encoder";
@@ -359,9 +366,132 @@ int main() {
     // destroys `command` buffer
     wgpuQueueSubmit(queue, 1, &command);
 
+#ifdef WEBGPU_BACKEND_DAWN
+    wgpuCommandEncoderRelease(encoder);
+    wgpuCommandBufferRelease(command);
+#endif // WEBGPU_BACKEND_DAWN
+
+    // create swap chain
+    // A new swap chain will be needed when window is _resized_!!!
+    // Do not try to resize it for now
+    WGPUSwapChainDescriptor swapChainDesc{};
+    swapChainDesc.nextInChain = nullptr;
+    swapChainDesc.width = 640;
+    swapChainDesc.height = 480;
+
+#ifdef WEBGPU_BACKEND_WGPU
+    WGPUTextureFormat swapChainFormat =
+        wgpuSurfaceGetPreferredFormat(surface, adapter);
+#else
+    WGPUTextureFormat swapChainFormat = WGPUTextureFormat_BGRA8Unorm;
+#endif // WGPU_BACKEND_WGPU
+
+    swapChainDesc.format = swapChainFormat;
+    // specify usage
+    swapChainDesc.usage = WGPUTextureUsage_RenderAttachment;
+
+    swapChainDesc.presentMode = WGPUPresentMode_Fifo;
+
+    // create the swap chain
+    WGPUSwapChain swapChain =
+        wgpuDeviceCreateSwapChain(device, surface, &swapChainDesc);
+    std::cout << "Swapchain: " << swapChain << std::endl;
+
     while (!glfwWindowShouldClose(window)) {
         glfwPollEvents();
+
+        // Get target texture view
+        // returns TextView
+        // gives us a restricted access to the actual texture object allocated
+        // by the swap chain
+        WGPUTextureView nextTexture =
+            wgpuSwapChainGetCurrentTextureView(swapChain);
+        std::cout << "nextTexture: " << nextTexture << std::endl;
+
+        // Getting the texture view _MAY FAIL_
+        // especially when the window has been _resized_ thus the target surface
+        // changed
+        if (!nextTexture) {
+            std::cerr << "CANNOT acquire next swap chain texture!" << std::endl;
+            break;
+        }
+
+        WGPUCommandEncoderDescriptor commandEncoderDesc{};
+        commandEncoderDesc.nextInChain = nullptr;
+        commandEncoderDesc.label = "CommandEncoder";
+        WGPUCommandEncoder encoder =
+            wgpuDeviceCreateCommandEncoder(device, &commandEncoderDesc);
+
+        // Draw
+        // Create Command Encoder
+        // Encode Render Pass
+        // Finish encoding and submit
+        WGPURenderPassDescriptor renderPassDesc{};
+
+        WGPURenderPassColorAttachment renderPassColorAttachment{};
+        renderPassDesc.colorAttachmentCount = 1;
+        renderPassDesc.colorAttachments = &renderPassColorAttachment;
+
+        // the texture view it must draw in
+        // in advanced pipelines it's common to draw on intermediate textures,
+        // which are then fed to e.g. post-process passes
+        renderPassColorAttachment.view = nextTexture;
+
+        renderPassColorAttachment.resolveTarget = nullptr;
+
+        // loadOp indicates the load operation to perform on view _prior_ to
+        // executing the render pass here sets it to default value
+        renderPassColorAttachment.loadOp = WGPULoadOp_Clear;
+
+        // storeOp indicates the operation to perform on view after executing
+        // the render pass can be either stored/discarded
+        renderPassColorAttachment.storeOp = WGPUStoreOp_Store;
+
+        // clearValue is the value to clear screen with
+        // The 4 values to put:
+        //   - red
+        //   - green
+        //   - blue
+        //   - alpha channels
+        // on a scale of 0.0 - 1.0
+        renderPassColorAttachment.clearValue = WGPUColor{0.9, 0.1, 0.2, 1.0};
+
+        renderPassDesc.depthStencilAttachment = nullptr;
+
+        // for potential performance measurements
+        renderPassDesc.timestampWriteCount = 0;
+        renderPassDesc.timestampWrites = nullptr;
+
+        renderPassDesc.nextInChain = nullptr;
+
+        WGPURenderPassEncoder renderPass =
+            wgpuCommandEncoderBeginRenderPass(encoder, &renderPassDesc);
+        // directly end the pass without any other command
+        wgpuRenderPassEncoderEnd(renderPass);
+
+        // Destroy texture view
+        // the texture view is used _only for a single frame_
+        wgpuTextureViewDrop(nextTexture);
+
+        // generates the command from the encoder
+        WGPUCommandBufferDescriptor cmdBufferDescriptor{};
+        cmdBufferDescriptor.nextInChain = nullptr;
+        cmdBufferDescriptor.label = "CommandBuffer";
+        // this operation destroys `encoder`
+        WGPUCommandBuffer command =
+            wgpuCommandEncoderFinish(encoder, &cmdBufferDescriptor);
+
+        // submit the command queue
+        // destroys `command` buffer
+        wgpuQueueSubmit(queue, 1, &command);
+
+        // Present swap chain
+        // once the texture is filled in and view released,
+        // tell the swap chain to present the next texture
+        wgpuSwapChainPresent(swapChain);
     }
+
+    wgpuSwapChainDrop(swapChain);
 
     // 5. clean up the WebGPU instance
     wgpuInstanceDrop(instance);

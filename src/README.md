@@ -67,5 +67,52 @@ navigator.gpu.requestAdapter(options).then(onAdapterRequestSuccess);
   - `wgpuQueueWriteBuffer` - sends memory from CPU memory (RAM) to the GPU one (VRAM)
   - `wgpuQueueWriteTexture` - sends memory from CPU memory (RAM) to the GPU one (VRAM)
 - the `WGPUCommandBuffer` object _CANNOT_ be manually created
-  - to build it, use ****command encoder****
--
+  - to build it, use \***\*command encoder\*\***
+
+## Swap Chain
+
+### Drawing Process
+
+- The render pipeline does _not_ draw directly on the texture currently displayed
+- A typical pipeline draws to an off-screen texture, which replaces the currently displayed one _only once_ it's complete
+  - the texture is \***\*presented\*\*** to the surface
+- Drawing takes a _different time_ than the frame rate required by the application
+  - GPU may have to wait until the next frame is needed
+  - there might be _more than one_ off-screen waiting in the queue to be presented
+- The off-screen textures are _reused_ as much as possible
+  - as soon as a new texture is presented, previous ones can be reused as a target for the next time
+  - the whole texture swapping mechanism is implemented by \***\*Swap Chain\*\***
+
+### Creation
+
+- create the swap chain descriptor
+- swap chain allocates textures
+  - textures are allocated for a _specific usage_, which dictates the way the GPU organizes its memory
+- Specify the present mode - which texture from the waiting queue must be presented at each frame
+  - `Immediate`
+  - `Mailbox`
+  - `Fifo`
+- Swap Chain is _NOT_ provided in the JavaScript API
+  - taken care of by the browser
+
+## Texture View
+
+- Swap Chain provides us with the texture where to draw the next frame
+
+## Render Pass
+
+### Render Pass Encoder
+
+- Like any GPU-side operation,
+  - trigger drawing operations from the **command queue**
+- A render pass leverages 3D rendering circuits of the GPU to draw content into one or multiple textures
+  - Important to tell _which textures are the target_ of this process
+  - a.k.a. \***\*attachments\*\*** of the render pass
+  - number of attachments is variable
+
+### Misc
+
+- A special type of attachment, which is a _single_ attachment potentially containing two channels
+  - **depth**
+  - **stencil**
+- When measuring performance of a render pass, it's _NOT_ possible to use CPU-side timings since the commands are _NOT_ executed synchronously
