@@ -116,3 +116,132 @@ navigator.gpu.requestAdapter(options).then(onAdapterRequestSuccess);
   - **depth**
   - **stencil**
 - When measuring performance of a render pass, it's _NOT_ possible to use CPU-side timings since the commands are _NOT_ executed synchronously
+
+## Render Pipeline
+
+- GPU processes shapes through a _predefined_ pipeline
+- the pipeline itself is _always_ the same
+  - generally burnt into the physical arch of the hardware
+  - but we can configure it
+
+### Vertex Pipeline State
+
+- Both \***\*vertex fetch\*\*** and \***\*vertex shader\*\*** stages are configured through the **vertex state** architecture
+- The render pipeline first fetches vertex attributes from some buffers
+- Then each vertex is processed by a custom \***\*vertex shader\*\***
+- Shader - the combination of:
+  - a shader module
+  - an entry point
+  - an array of value assignments for the **constants** of the shader
+
+### Primitive Pipeline State
+
+- \***\*primitive state\*\*** configures the \***\*primitive assembly\*\*** and \***\*rasterization\*\*** stages
+- \***\*rasterization\*\***
+  - heart of 3D rendering
+  - transforms a **primitive** (point, line, or triangle) into a series of **fragments**, that
+    - correspond to the pixels covered by the primitive
+  - interpolates any extra attribute output by the vertex shader
+- **Fragment**
+  - the projection of a given primitive on a given pixel
+- the **primitive assembly configuration** consists of stating how the array of vertices fetched earlier must be connected to form
+  - a point cloud
+  - a wire frame, or
+  - a triangle
+
+### Fragment Shader
+
+- Once a primitive has been turned into fragments
+  - the **fragment shader** stage is invoke for _each one of_ them
+
+### Stencil/Depth State
+
+- **Depth test**
+  - discard fragments that are _behind_ other fragments associated to the same pixel
+- When primitives overlap, multiple fragments are emitted for the same pixel
+- Fragments have a **depth** info
+- **Stencil test**
+  - another fragment discarding mechanism
+  - hide fragments based on previously rendered primitives
+
+### Blending
+
+- Takes each fragment's color and paints it onto the target color attachment
+- Must specify what _format_ the colors are to be stored in the final attachment
+
+#### Blending Equation
+
+- General form:
+  - `rgb = srcFactor * rgb_s [operation] dstFactor * rgb_d`
+- **Alpha blending**
+  - `rgb = a_s * rgb_s + (1 - a_s) * rgb_d`
+  - where a pixel can be represented `(r, g, b, a)`
+
+### Multi-Sampling
+
+- Can split pixels into sub-elements, \***\*samples\*\***
+- fragment is associated to a sample
+- value of a pixel is computed by averaging its associated samples
+  - **multi-sampling**
+    - used for anti-aliasing
+
+## Shaders
+
+- **Shader module**
+  - a dynamic lib
+  - talks in binary language of GPU
+- The application is distributed with the **source code** of the shaders,
+  - compiled on the fly when initializing the application
+
+### Shader Code
+
+- \***\*WGSL\*\*** - _official_ shader language used by WebGPU
+  - \***\*WebGPU Shading Language\*\***
+- Shader languages natively support **vector** and **matrix** types up to size **4**
+  - `vec2f` - vector of 2 `float`s
+    - `vec2<f32>`
+  - `vec4<u32>` - vector of 4 unsigned integers
+    - `vec4u`
+- \***\*Attributes\*\***
+  - starting with `@`
+- For more flexibility, shader code should be loaded from a file
+- `nextInChain`
+  - entry point of WebGPU's **extension mechanism**
+  - either
+    - Null, or
+    - pointing to a structure of type `WGPUChainedStruct`
+- `WGPUChainedStruct` - has two fields
+  - `next` - recursively points to the next
+  - `SType` - an enum - in which struct this chain element can be cast
+- To create a shader module from WGSL code, use `ShaderModuleWGSLDescripter` SType
+
+### Pipeline Layout
+
+- shaders might need to _access input/output resources_
+  - buffers and/or textures
+  - made available to the pipeline by configuring a memory layout
+
+## Input Geometry
+
+### Buffer
+
+- \***\*Buffer\*\*** - a chunk of memory allocated in the VRAM (GPU's memory)
+  - `new` or `malloc` for the GPU
+- We _must_ state hints about of use of the memory _upon creation_
+- a GPU buffer is **mapped** when it's connected to a specific part of the CPU-side RAM
+  - driver then automatically synch its content (reading/writing)
+- Remember to free the buffers!
+  ```c++
+  buffer.destroy();
+  wgpuBufferDrop(buffer); // wgpuBufferRelease
+  ```
+  - `destroy()` frees the GPU memory that was allocated for the buffer
+  - `drop` frees the driver/backend side object
+
+### Writing to Buffer
+
+- uploading data from CPU-size memory to GPU-side (VRAM) _takes time_
+- when `writeBuffer()` returns, data transfer _may not_ have finished yet BUT guaranteed that
+  - memory from the address just passed can be freed
+    - back-end maintains its own CPU-side copy of the buffer during transfer
+  - commands submitted in the queue _after_ `writeBuffer()` will _NOT_ be executed _before_ data transfer is completed

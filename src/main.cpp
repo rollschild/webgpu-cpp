@@ -1,5 +1,8 @@
+#include "glfw3webgpu.h"
 #include <GLFW/glfw3.h>
-#include <webgpu/webgpu.h>
+// #include <webgpu/webgpu.h>
+#define WEBGPU_CPP_IMPLEMENTATION
+#include "webgpu.hpp"
 #include <webgpu/wgpu.h> // Non-standard from wgpu-native
 
 #include <cassert>
@@ -7,12 +10,12 @@
 #include <iostream>
 #include <vector>
 
-#include "glfw3webgpu/glfw3webgpu.h"
+using namespace wgpu;
 
 /*
  * Util function to get a WebGPU adapter
  */
-WGPUAdapter request_adapter(WGPUInstance instance,
+/* WGPUAdapter request_adapter(WGPUInstance instance,
                             WGPURequestAdapterOptions const *options) {
     struct UserData {
         WGPUAdapter adapter{nullptr};
@@ -40,9 +43,9 @@ WGPUAdapter request_adapter(WGPUInstance instance,
     assert(userData.requestEnded);
 
     return userData.adapter;
-}
+} */
 
-void inspect_adapter(WGPUAdapter adapter) {
+/* void inspect_adapter(WGPUAdapter adapter) {
     std::vector<WGPUFeatureName> features;
     size_t featureCount = wgpuAdapterEnumerateFeatures(adapter, nullptr);
 
@@ -133,9 +136,9 @@ void inspect_adapter(WGPUAdapter adapter) {
     }
     std::cout << " - adapterType: " << properties.adapterType << std::endl;
     std::cout << " - backendType: " << properties.backendType << std::endl;
-}
+} */
 
-WGPUDevice requestDevice(WGPUAdapter adapter,
+/* WGPUDevice requestDevice(WGPUAdapter adapter,
                          WGPUDeviceDescriptor const *descriptor) {
     struct UserData {
         WGPUDevice device{nullptr};
@@ -162,9 +165,9 @@ WGPUDevice requestDevice(WGPUAdapter adapter,
     assert(userData.requestEnded);
 
     return userData.device;
-}
+} */
 
-void inspectDevice(WGPUDevice device) {
+/* void inspectDevice(WGPUDevice device) {
     std::vector<WGPUFeatureName> features{};
     size_t featureCount = wgpuDeviceEnumerateFeatures(device, nullptr);
     features.resize(featureCount);
@@ -239,7 +242,7 @@ void inspectDevice(WGPUDevice device) {
                   << limits.limits.maxComputeWorkgroupsPerDimension
                   << std::endl;
     }
-}
+} */
 
 int main() {
     // 1. create a descriptor
@@ -247,11 +250,11 @@ int main() {
     // Idiom:
     //   - first field of a descriptor is _always_ a pointer called
     //   `nextInChain`
-    WGPUInstanceDescriptor desc = {};
-    desc.nextInChain = nullptr;
+    /* WGPUInstanceDescriptor desc = {};
+    desc.nextInChain = nullptr; */
 
     // 2. create an instance
-    WGPUInstance instance = wgpuCreateInstance(&desc);
+    Instance instance = createInstance(InstanceDescriptor{});
 
     // 3. check whether instance is created or not
     if (!instance) {
@@ -287,62 +290,71 @@ int main() {
     }
     std::cout << "window:" << window << std::endl;
 
-    WGPUSurface surface = glfwGetWGPUSurface(instance, window);
+    Surface surface = glfwGetWGPUSurface(instance, window);
     std::cout << "surface: " << surface << std::endl;
     std::cout << "Requesting adapter..." << std::endl;
-    WGPURequestAdapterOptions adapterOptions{};
-    adapterOptions.nextInChain = nullptr;
+    RequestAdapterOptions adapterOptions{};
+    // adapterOptions.nextInChain = nullptr;
     // pass "the surface onto which we draw" as an option
     adapterOptions.compatibleSurface = surface;
-    WGPUAdapter adapter = request_adapter(instance, &adapterOptions);
+    Adapter adapter = instance.requestAdapter(adapterOptions);
 
     std::cout << "Got adapter: " << adapter << std::endl;
 
-    inspect_adapter(adapter);
-
     std::cout << "Requesting device..." << std::endl;
 
-    WGPUDeviceDescriptor deviceDesc{};
-    deviceDesc.nextInChain = nullptr;
+    DeviceDescriptor deviceDesc{};
+    // deviceDesc.nextInChain = nullptr;
     // label is used in error message for debugging
     // currently only used by Dawn
     deviceDesc.label = "My Device";
     deviceDesc.requiredFeaturesCount = 0;
     deviceDesc.requiredLimits = nullptr;
-    deviceDesc.defaultQueue.nextInChain = nullptr;
+    // deviceDesc.defaultQueue.nextInChain = nullptr;
     deviceDesc.defaultQueue.label = "The default queue";
 
-    WGPUDevice device = requestDevice(adapter, &deviceDesc);
+    Device device = adapter.requestDevice(deviceDesc);
 
     std::cout << "Got device: " << device << std::endl;
 
     // a callback that gets executed upon errors
     // convenient for _aysnc_ operations
-    auto onDeviceError = [](WGPUErrorType type, char const *message,
+    /* auto onDeviceError = [](WGPUErrorType type, char const *message,
                             void *ptrUserData) {
         std::cout << "Uncaptured device error: type " << type;
         if (message)
             std::cout << " (" << message << ")";
         std::cout << std::endl;
     };
-    wgpuDeviceSetUncapturedErrorCallback(device, onDeviceError, nullptr);
-
-    inspectDevice(device);
+    wgpuDeviceSetUncapturedErrorCallback(device, onDeviceError, nullptr); */
+    auto h = device.setUncapturedErrorCallback(
+        [](ErrorType type, char const *message) {
+            std::cout << "Device error: type " << type;
+            if (message)
+                std::cout << " (message: " << message << ")";
+            std::cout << std::endl;
+        });
 
     // Get the queue - Our WebGPU device has a single queue
     // BUT in the future there might be multiple queues per device
-    WGPUQueue queue = wgpuDeviceGetQueue(device);
+    Queue queue = device.getQueue();
+    std::cout << "Creating swapchain..." << std::endl;
 
-#ifdef WEBGPU_BACKEND_DAWN
-    auto onQueueWorkDone = [](WGPUQueueWorkDoneStatus status,
-                              void *ptrUserData) {
-        std::cout << "Queue work finished with status: " << status << std::endl;
-    };
-    wgpuQueueOnSubmittedWorkDone(queue, 0 /* Non-standard arg for Dawn */,
-                                 onQueueWorkDone, nullptr /* ptrUserData */);
-#endif // WEBGPU_BACKEND_DAWN
+    // #ifdef WEBGPU_BACKEND_DAWN
+    // auto onQueueWorkDone = [](WGPUQueueWorkDoneStatus status,
+    // void *ptrUserData) {
+    // std::cout << "Queue work finished with status: " << status << std::endl;
+    // };
+    // wgpuQueueOnSubmittedWorkDone(queue, 0 /* Non-standard arg for Dawn */,
+    // onQueueWorkDone, nullptr /* ptrUserData */);
+// #endif // WEBGPU_BACKEND_DAWN
+#ifdef WEBGPU_BACKEND_WGPU
+    TextureFormat swapChainFormat = surface.getPreferredFormat(adapter);
+#else
+    TextureFormat swapChainFormat = TextureFormat::BGRA8Unorm;
+#endif // WEBGPU_BACKEND_WGPU
 
-    // a WGPUCommandBuffer cannot be manually created
+    /* // a WGPUCommandBuffer cannot be manually created
     // a *command encoder* is needed
     WGPUCommandEncoderDescriptor encoderDesc{};
     encoderDesc.nextInChain = nullptr;
@@ -369,33 +381,141 @@ int main() {
 #ifdef WEBGPU_BACKEND_DAWN
     wgpuCommandEncoderRelease(encoder);
     wgpuCommandBufferRelease(command);
-#endif // WEBGPU_BACKEND_DAWN
+#endif // WEBGPU_BACKEND_DAWN */
 
     // create swap chain
     // A new swap chain will be needed when window is _resized_!!!
     // Do not try to resize it for now
-    WGPUSwapChainDescriptor swapChainDesc{};
-    swapChainDesc.nextInChain = nullptr;
+    SwapChainDescriptor swapChainDesc{};
+    // swapChainDesc.nextInChain = nullptr;
     swapChainDesc.width = 640;
     swapChainDesc.height = 480;
-
-#ifdef WEBGPU_BACKEND_WGPU
-    WGPUTextureFormat swapChainFormat =
-        wgpuSurfaceGetPreferredFormat(surface, adapter);
-#else
-    WGPUTextureFormat swapChainFormat = WGPUTextureFormat_BGRA8Unorm;
-#endif // WGPU_BACKEND_WGPU
-
-    swapChainDesc.format = swapChainFormat;
     // specify usage
-    swapChainDesc.usage = WGPUTextureUsage_RenderAttachment;
-
-    swapChainDesc.presentMode = WGPUPresentMode_Fifo;
+    swapChainDesc.usage = TextureUsage::RenderAttachment;
+    swapChainDesc.format = swapChainFormat;
+    swapChainDesc.presentMode = PresentMode::Fifo;
 
     // create the swap chain
-    WGPUSwapChain swapChain =
-        wgpuDeviceCreateSwapChain(device, surface, &swapChainDesc);
+    SwapChain swapChain = device.createSwapChain(surface, swapChainDesc);
     std::cout << "Swapchain: " << swapChain << std::endl;
+
+    const char *shaderSource = R"(
+    @vertex
+    fn vs_main(@builtin(vertex_index) in_vertex_index: u32) -> @builtin(position) vec4<f32> {
+            var p = vec2f(0.0, 0.0);
+            if(in_vertex_index == 0u) {
+                    p = vec2f(-0.5, -0.5);
+            } else if (in_vertex_index == 1u) {
+                    p = vec2f(0.5, -0.5);
+            } else {
+                    p = vec2f(0.0, 0.5);
+            }
+            return vec4f(p, 0.0, 1.0);
+    }
+
+    @fragment
+    fn fs_main() -> @location(0) vec4f {
+        return vec4f(0.0, 0.4, 1.0, 1.0);
+    }
+    )";
+
+    ShaderModuleDescriptor shaderDesc{};
+
+#ifdef WEBGPU_BACKEND_WGPU
+    shaderDesc.hintCount = 0;
+    shaderDesc.hints = nullptr;
+#endif
+
+    ShaderModuleWGSLDescriptor shaderCodeDesc{};
+    shaderCodeDesc.chain.next = nullptr;
+    shaderCodeDesc.chain.sType = SType::ShaderModuleWGSLDescriptor;
+    shaderDesc.nextInChain = &shaderCodeDesc.chain;
+
+#ifdef WEBGPU_BACKEND_WGPU
+    shaderCodeDesc.code = shaderSource;
+#else
+    shaderCodeDesc.source = shaderSource;
+#endif
+
+    ShaderModule shaderModule = device.createShaderModule(shaderDesc);
+
+    RenderPipelineDescriptor pipelineDesc{};
+    pipelineDesc.vertex.bufferCount = 0;
+    pipelineDesc.vertex.buffers = nullptr;
+
+    // vertex shader
+    pipelineDesc.vertex.module = shaderModule;
+    pipelineDesc.vertex.entryPoint = "vs_main"; // ???
+    pipelineDesc.vertex.constantCount = 0;
+    pipelineDesc.vertex.constants = nullptr;
+
+    // primitive pipeline state
+    // each sequence of 3 vertices is a **triangle**
+    pipelineDesc.primitive.topology = PrimitiveTopology::TriangleList;
+    // the order in which vertices should be connected
+    // when not specified, connected _sequentially_
+    pipelineDesc.primitive.stripIndexFormat = IndexFormat::Undefined;
+    // face orientation
+    // assuming that when looking from the front of the face, its corner
+    // vertices are enumerated in the counter-clockwise (CCW) order
+    pipelineDesc.primitive.frontFace = FrontFace::CCW;
+    // cull (hide) faces pointer away from us (often used for optimization)
+    // no cull for now - the face orientation does not matter
+    // _usually_ set to `Front`
+    pipelineDesc.primitive.cullMode = CullMode::None;
+
+    // Fragment shader
+    FragmentState fragmentState{};
+    // configure the blend stage here
+    // fragment stage is _optional_
+    // pipelineDesc.fragment is potentially nullptr
+    pipelineDesc.fragment = &fragmentState;
+    fragmentState.module = shaderModule;
+    fragmentState.entryPoint = "fs_main";
+    fragmentState.constantCount = 0;
+    fragmentState.constants = nullptr;
+
+    BlendState blendState{};
+    // usual alpha blending for the color
+    blendState.color.srcFactor = BlendFactor::SrcAlpha;
+    blendState.color.dstFactor = BlendFactor::OneMinusSrcAlpha;
+    blendState.color.operation = BlendOperation::Add;
+
+    // leave target alpha untouched
+    blendState.alpha.srcFactor = BlendFactor::Zero;
+    blendState.alpha.dstFactor = BlendFactor::One;
+    blendState.alpha.operation = BlendOperation::Add;
+
+    ColorTargetState colorTarget{};
+    colorTarget.format = swapChainFormat;
+    colorTarget.blend = &blendState;
+    colorTarget.writeMask = ColorWriteMask::All;
+
+    // Only one target,
+    // because our render pass has only one output color attachment
+    fragmentState.targetCount = 1;
+    fragmentState.targets = &colorTarget;
+
+    // depth and stencil tests are not used here
+    pipelineDesc.depthStencil = nullptr;
+
+    // Turn off multi-sampling
+    // samples per pixel
+    pipelineDesc.multisample.count = 1;
+    // default value for the mask
+    // *ALL* bits _ON_
+    pipelineDesc.multisample.mask = ~0u;
+    // default value
+    pipelineDesc.multisample.alphaToCoverageEnabled = false;
+
+    // not using any resources for now
+    // asks the backend to figure out the layout by itself by inspecting the
+    // shader
+    pipelineDesc.layout = nullptr;
+
+    // describe render pipeline
+    RenderPipeline pipeline = device.createRenderPipeline(pipelineDesc);
+    std::cout << "Render pipeline: " << pipeline << std::endl;
 
     while (!glfwWindowShouldClose(window)) {
         glfwPollEvents();
@@ -404,8 +524,7 @@ int main() {
         // returns TextView
         // gives us a restricted access to the actual texture object allocated
         // by the swap chain
-        WGPUTextureView nextTexture =
-            wgpuSwapChainGetCurrentTextureView(swapChain);
+        TextureView nextTexture = swapChain.getCurrentTextureView();
         std::cout << "nextTexture: " << nextTexture << std::endl;
 
         // Getting the texture view _MAY FAIL_
@@ -416,22 +535,19 @@ int main() {
             break;
         }
 
-        WGPUCommandEncoderDescriptor commandEncoderDesc{};
-        commandEncoderDesc.nextInChain = nullptr;
+        CommandEncoderDescriptor commandEncoderDesc{};
+        // commandEncoderDesc.nextInChain = nullptr;
         commandEncoderDesc.label = "CommandEncoder";
-        WGPUCommandEncoder encoder =
-            wgpuDeviceCreateCommandEncoder(device, &commandEncoderDesc);
+        CommandEncoder encoder =
+            device.createCommandEncoder(commandEncoderDesc);
 
         // Draw
         // Create Command Encoder
         // Encode Render Pass
         // Finish encoding and submit
-        WGPURenderPassDescriptor renderPassDesc{};
+        RenderPassDescriptor renderPassDesc{};
 
-        WGPURenderPassColorAttachment renderPassColorAttachment{};
-        renderPassDesc.colorAttachmentCount = 1;
-        renderPassDesc.colorAttachments = &renderPassColorAttachment;
-
+        RenderPassColorAttachment renderPassColorAttachment{};
         // the texture view it must draw in
         // in advanced pipelines it's common to draw on intermediate textures,
         // which are then fed to e.g. post-process passes
@@ -441,11 +557,11 @@ int main() {
 
         // loadOp indicates the load operation to perform on view _prior_ to
         // executing the render pass here sets it to default value
-        renderPassColorAttachment.loadOp = WGPULoadOp_Clear;
+        renderPassColorAttachment.loadOp = LoadOp::Clear;
 
         // storeOp indicates the operation to perform on view after executing
         // the render pass can be either stored/discarded
-        renderPassColorAttachment.storeOp = WGPUStoreOp_Store;
+        renderPassColorAttachment.storeOp = StoreOp::Store;
 
         // clearValue is the value to clear screen with
         // The 4 values to put:
@@ -454,7 +570,10 @@ int main() {
         //   - blue
         //   - alpha channels
         // on a scale of 0.0 - 1.0
-        renderPassColorAttachment.clearValue = WGPUColor{0.9, 0.1, 0.2, 1.0};
+        renderPassColorAttachment.clearValue = Color{0.9, 0.1, 0.2, 1.0};
+
+        renderPassDesc.colorAttachmentCount = 1;
+        renderPassDesc.colorAttachments = &renderPassColorAttachment;
 
         renderPassDesc.depthStencilAttachment = nullptr;
 
@@ -462,33 +581,42 @@ int main() {
         renderPassDesc.timestampWriteCount = 0;
         renderPassDesc.timestampWrites = nullptr;
 
-        renderPassDesc.nextInChain = nullptr;
+        // renderPassDesc.nextInChain = nullptr;
 
-        WGPURenderPassEncoder renderPass =
-            wgpuCommandEncoderBeginRenderPass(encoder, &renderPassDesc);
+        RenderPassEncoder renderPass = encoder.beginRenderPass(renderPassDesc);
+
+        // In its overall pipeline, draw a triangle
+        renderPass.setPipeline(pipeline);
+        // Draw 1 instance of a 3-vertice shape
+        renderPass.draw(3, 1, 0, 0);
         // directly end the pass without any other command
-        wgpuRenderPassEncoderEnd(renderPass);
+        renderPass.end();
 
         // Destroy texture view
         // the texture view is used _only for a single frame_
-        wgpuTextureViewDrop(nextTexture);
+        // wgpuTextureViewDrop(nextTexture);
+        nextTexture.drop();
 
         // generates the command from the encoder
-        WGPUCommandBufferDescriptor cmdBufferDescriptor{};
-        cmdBufferDescriptor.nextInChain = nullptr;
+        CommandBufferDescriptor cmdBufferDescriptor{};
+        // cmdBufferDescriptor.nextInChain = nullptr;
         cmdBufferDescriptor.label = "CommandBuffer";
         // this operation destroys `encoder`
-        WGPUCommandBuffer command =
-            wgpuCommandEncoderFinish(encoder, &cmdBufferDescriptor);
+        CommandBuffer command = encoder.finish(cmdBufferDescriptor);
+
+#ifdef WEBGPU_BACKEND_DAWN
+        wgpuCommandEncoderRelease(encoder);
+        wgpuCommandBufferRelease(command);
+#endif // WEBGPU_BACKEND_DAWN
 
         // submit the command queue
         // destroys `command` buffer
-        wgpuQueueSubmit(queue, 1, &command);
+        queue.submit(command);
 
         // Present swap chain
         // once the texture is filled in and view released,
         // tell the swap chain to present the next texture
-        wgpuSwapChainPresent(swapChain);
+        swapChain.present();
     }
 
     wgpuSwapChainDrop(swapChain);
