@@ -245,3 +245,18 @@ navigator.gpu.requestAdapter(options).then(onAdapterRequestSuccess);
   - memory from the address just passed can be freed
     - back-end maintains its own CPU-side copy of the buffer during transfer
   - commands submitted in the queue _after_ `writeBuffer()` will _NOT_ be executed _before_ data transfer is completed
+
+### Reading from Buffer
+
+- _CANNOT_ just use the command queue to read memory back from GPU - this is a "fire and forget" queue
+  - functions do _NOT_ return a value since they are run on a _different timeline_
+- Use _async_ operations
+  - `wgpuBufferMapAsync` (or `buffer.mapAsync`)
+  - maps GPU buffer into CPU memory
+  - whenever it's ready it executes the callback function provided
+
+### Asynchronous Polling
+
+- There is _NO_ hidden process executed by the WebGPU lib to check that the async operation is ready
+- Backend checks for ongoing async operations _only when_ we call another op
+-
