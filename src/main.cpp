@@ -230,6 +230,8 @@ int main() {
         context->buffer.unmap();
     };
     Context context{buffer2};
+    // maps the GPU buffer into CPU memory
+    // whenever it is ready it executes the callback
     wgpuBufferMapAsync(buffer2, MapMode::Read, 0, 16, onBuffer2Mapped,
                        (void *)&context);
 
