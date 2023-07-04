@@ -245,3 +245,83 @@ navigator.gpu.requestAdapter(options).then(onAdapterRequestSuccess);
   - memory from the address just passed can be freed
     - back-end maintains its own CPU-side copy of the buffer during transfer
   - commands submitted in the queue _after_ `writeBuffer()` will _NOT_ be executed _before_ data transfer is completed
+
+### Reading from Buffer
+
+- _CANNOT_ just use the command queue to read memory back from GPU - this is a "fire and forget" queue
+  - functions do _NOT_ return a value since they are run on a _different timeline_
+- Use _async_ operations
+  - `wgpuBufferMapAsync` (or `buffer.mapAsync`)
+  - maps GPU buffer into CPU memory
+  - whenever it's ready it executes the callback function provided
+
+### Asynchronous Polling
+
+- There is _NO_ hidden process executed by the WebGPU lib to check that the async operation is ready
+- Backend checks for ongoing async operations _only when_ we call another op
+
+## Vertext Attributes
+
+### Shader
+
+- We do _NOT_ control how `vs_main` is invoked
+  - it's controlled by the fixed part of the render pipeline
+- In the code below, arg `in_vertex_index` must be populated by the vertex fetch stage with the index of the current index
+  ```wgsl
+    @vertex
+    fn vs_main(@builtin(vertex_index) in_vertex_index: u32) -> @builtin(position) vec4<f32> {
+    }
+  ```
+  - `@builtin(vertex_index)` is a **WGSL Attribute**
+- To create custom input (instead of built-in):
+
+  1. Create a **buffer** to store the value of the input for each vertex - stored on GPU side
+  2. Tell render pipeline how to interpret the raw buffer data when fetching an entry for each vertex - the vertex buffer **layout**
+  3. Set vertex buffer in the render pass before the draw call
+
+- **Attribute**
+  - WGSL attribute: tokens like `@something` in WGSL code
+  - **vertex attribute**: an input of the vertex shader
+- Number of vertex attributes available for the device may vary if not specified
+
+### Vertex Buffer Layout
+
+- the **vertex fetch** stage
+  - provide data from the vertex buffer to the vertex shader
+- The same vertex buffer can contain multiple vertex attributes
+  - `maxVertexAttributes` and `maxVertexBuffers` limits are _different_
+- **stride**
+  - a common concept in buffer manipulation
+  - designates the number of bytes between two consecutive elements
+  - if positions are _contiguous_, stride is equal to the size of a `vec2f` - will change if more attributes are added in the same buffer
+
+### Render Pass
+
+- Connect the vertex buffer to the pipeline's vertex buffer layout when encoding the render pass
+
+## Multiple Attributes
+
+- Vertices can contani _more than_ just a position
+  - color attribute
+
+### Shader
+
+- vertex attributes are _only_ provided in the vertex shader
+  - HOWEVER, the **fragment shader** can receive what the vertex shader returns
+- There is a **limit** on the number of components that can be forwarded vertex -> fragment shader
+
+### Vertex Buffer Layout
+
+- Multiple ways to feed multiple attributes to the vertex fetch stage
+
+#### Option A: Interleaved Attributes
+
+- Put in a _single_ buffer the values for _all_ attributes of the first vertex, then all values for the second vertex, and so on
+
+#### Option B: Multiple Buffers
+
+- Have different buffers for different attributes
+- Need to change `requiredLimits.limits.maxVertexBuffers`
+- This leads to multiple GPU buffers
+  - multiple `queue.writeBuffer()`
+  -

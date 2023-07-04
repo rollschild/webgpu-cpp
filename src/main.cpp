@@ -301,6 +301,25 @@ int main() {
 
     std::cout << "Got adapter: " << adapter << std::endl;
 
+    SupportedLimits supportedLimits;
+    adapter.getLimits(&supportedLimits);
+    std::cout << "adapter.maxVertexAttributes: "
+              << supportedLimits.limits.maxVertexAttributes << std::endl;
+    RequiredLimits requiredLimits = Default;
+    requiredLimits.limits.maxVertexAttributes = 2;
+    requiredLimits.limits.maxVertexBuffers = 1;
+    // max size of buffer is 6 vertices of 2 float each
+    requiredLimits.limits.maxBufferSize = 6 * 5 * sizeof(float);
+    // max stride between 2 consecutive vertices in the vertex buffer
+    // what is a stride??
+    requiredLimits.limits.maxVertexBufferArrayStride = 5 * sizeof(float);
+    requiredLimits.limits.minStorageBufferOffsetAlignment =
+        supportedLimits.limits.minStorageBufferOffsetAlignment;
+    requiredLimits.limits.minUniformBufferOffsetAlignment =
+        supportedLimits.limits.minUniformBufferOffsetAlignment;
+    // max number of components that can be forwarded vertex -> fragment shader
+    requiredLimits.limits.maxInterStageShaderComponents = 3;
+
     std::cout << "Requesting device..." << std::endl;
 
     DeviceDescriptor deviceDesc{};
@@ -309,13 +328,15 @@ int main() {
     // currently only used by Dawn
     deviceDesc.label = "My Device";
     deviceDesc.requiredFeaturesCount = 0;
-    deviceDesc.requiredLimits = nullptr;
-    // deviceDesc.defaultQueue.nextInChain = nullptr;
+    deviceDesc.requiredLimits = &requiredLimits;
     deviceDesc.defaultQueue.label = "The default queue";
 
     Device device = adapter.requestDevice(deviceDesc);
 
     std::cout << "Got device: " << device << std::endl;
+
+    adapter.getLimits(&supportedLimits);
+    device.getLimits(&supportedLimits);
 
     // a callback that gets executed upon errors
     // convenient for _aysnc_ operations
@@ -400,38 +421,47 @@ int main() {
     std::cout << "Swapchain: " << swapChain << std::endl;
 
     const char *shaderSource = R"(
+    struct VertexInput {
+        @location(0) position: vec2f,
+        @location(1) color: vec3f,
+    };
+
+    struct VertexOutput {
+        @builtin(position) position: vec4f,
+        // location here does _NOT_ refer to a vertex attribute 
+        // it means that this field must be handled by the rasterizer
+        // it could also refer to another field of another struct that would be used as input to the fragment shader
+        @location(0) color: vec3f,
+    };
+
+    /*
+     * the `@location(0)` attribute means this input variable is described by the vertex buffer layout at index 0 in the `pipelineDesc.vertex.buffers` array 
+    * type `vec2f` must comply with what is declared in the layout  
+    */
+
     @vertex
-    fn vs_main(@builtin(vertex_index) in_vertex_index: u32) -> @builtin(position) vec4<f32> {
-            var p = vec2f(0.0, 0.0);
-            if(in_vertex_index == 0u) {
-                    p = vec2f(-0.5, -0.5);
-            } else if (in_vertex_index == 1u) {
-                    p = vec2f(0.5, -0.5);
-            } else {
-                    p = vec2f(0.0, 0.5);
-            }
-            return vec4f(p, 0.0, 1.0);
+    fn vs_main(in: VertexInput) -> VertexOutput {
+        var out: VertexOutput;
+        out.position = vec4f(in.position, 0.0, 1.0);
+        out.color = in.color;
+        return out;
     }
 
     @fragment
-    fn fs_main() -> @location(0) vec4f {
-        return vec4f(0.0, 0.4, 1.0, 1.0);
+    fn fs_main(in: VertexOutput) -> @location(0) vec4f {
+        return vec4f(in.color, 1.0);
     }
     )";
 
+    ShaderModuleWGSLDescriptor shaderCodeDesc;
+    shaderCodeDesc.chain.next = nullptr;
+    shaderCodeDesc.chain.sType = SType::ShaderModuleWGSLDescriptor;
     ShaderModuleDescriptor shaderDesc{};
+    shaderDesc.nextInChain = &shaderCodeDesc.chain;
 
 #ifdef WEBGPU_BACKEND_WGPU
     shaderDesc.hintCount = 0;
     shaderDesc.hints = nullptr;
-#endif
-
-    ShaderModuleWGSLDescriptor shaderCodeDesc{};
-    shaderCodeDesc.chain.next = nullptr;
-    shaderCodeDesc.chain.sType = SType::ShaderModuleWGSLDescriptor;
-    shaderDesc.nextInChain = &shaderCodeDesc.chain;
-
-#ifdef WEBGPU_BACKEND_WGPU
     shaderCodeDesc.code = shaderSource;
 #else
     shaderCodeDesc.source = shaderSource;
@@ -439,9 +469,40 @@ int main() {
 
     ShaderModule shaderModule = device.createShaderModule(shaderDesc);
 
+    // Vertex fetch
+    VertexBufferLayout vertexBufferLayout;
+    // Build vertex buffer layout
+    // VertexAttribute vertexAttrib;
+    std::vector<VertexAttribute> vertexAttribs(2);
+
+    // position
+    vertexAttribs[0].shaderLocation = 0;
+    vertexAttribs[0].format = VertexFormat::Float32x2;
+    vertexAttribs[0].offset = 0;
+    // color
+    vertexAttribs[1].shaderLocation = 1;
+    vertexAttribs[1].format = VertexFormat::Float32x3;
+    vertexAttribs[1].offset = 2 * sizeof(float);
+
+    /* // === Per Attribute ==
+    // @location(...)
+    vertexAttrib.shaderLocation = 0;
+    // vec2f in shader
+    vertexAttrib.format = VertexFormat::Float32x2;
+    // index of the first element
+    vertexAttrib.offset = 0; */
+    vertexBufferLayout.attributeCount =
+        static_cast<uint32_t>(vertexAttribs.size());
+    vertexBufferLayout.attributes = vertexAttribs.data();
+    vertexBufferLayout.arrayStride = 5 * sizeof(float);
+    // `VertexStepMode::Vertex` - each vertex corresponds to a different value
+    // from the buffer if set to `Instance`, each value is shared by all
+    // vertices of the same instance of the shape
+    vertexBufferLayout.stepMode = VertexStepMode::Vertex;
+
     RenderPipelineDescriptor pipelineDesc{};
-    pipelineDesc.vertex.bufferCount = 0;
-    pipelineDesc.vertex.buffers = nullptr;
+    pipelineDesc.vertex.bufferCount = 1;
+    pipelineDesc.vertex.buffers = &vertexBufferLayout;
 
     // vertex shader
     pipelineDesc.vertex.module = shaderModule;
@@ -517,6 +578,35 @@ int main() {
     RenderPipeline pipeline = device.createRenderPipeline(pipelineDesc);
     std::cout << "Render pipeline: " << pipeline << std::endl;
 
+    // Vertex Buffer
+    // 2 floats per vertex , one for x and one for y
+    // *layout* tells GPU how to interpret this
+    // std::vector<float> vertexData{-0.5, -0.5, +0.5, -0.5, +0.0, +0.5};
+    // clang-format off
+    std::vector<float> vertexData = {
+        // x0,   y0,  r0,  g0,  b0
+        -0.5,   -0.5, 1.0, 0.0, 0.0, 
+        // x1,   y1,  r1,  g1,  b1
+        +0.5,   -0.5, 0.0, 1.0, 0.0,
+        +0.0,   +0.5, 0.0, 0.0, 1.0,
+        -0.55f, -0.5, 1.0, 1.0, 0.0,
+        -0.05f, +0.5, 1.0, 0.0, 1.0,
+        -0.55f, +0.5, 0.0, 1.0, 1.0,
+    };
+
+    // clang-format on
+    int vertexCount = static_cast<int>(vertexData.size() / 5);
+
+    // Create GPU vertex buffer
+    BufferDescriptor bufferDesc;
+    bufferDesc.size = vertexData.size() * sizeof(float);
+    bufferDesc.usage = BufferUsage::CopyDst | BufferUsage::Vertex;
+    bufferDesc.mappedAtCreation = false;
+    Buffer vertexBuffer = device.createBuffer(bufferDesc);
+
+    // Upload geometry data to buffer
+    queue.writeBuffer(vertexBuffer, 0, vertexData.data(), bufferDesc.size);
+
     while (!glfwWindowShouldClose(window)) {
         glfwPollEvents();
 
@@ -587,8 +677,10 @@ int main() {
 
         // In its overall pipeline, draw a triangle
         renderPass.setPipeline(pipeline);
+        renderPass.setVertexBuffer(0, vertexBuffer, 0,
+                                   vertexData.size() * sizeof(float));
         // Draw 1 instance of a 3-vertice shape
-        renderPass.draw(3, 1, 0, 0);
+        renderPass.draw(vertexCount, 1, 0, 0);
         // directly end the pass without any other command
         renderPass.end();
 
@@ -620,15 +712,12 @@ int main() {
     }
 
     wgpuSwapChainDrop(swapChain);
-
-    // 5. clean up the WebGPU instance
-    wgpuInstanceDrop(instance);
-
+    wgpuDeviceDrop(device);
     // Destroy the adapter
     // This function is wgpu-native specific
     wgpuAdapterDrop(adapter);
-
-    wgpuDeviceDrop(device);
+    // 5. clean up the WebGPU instance
+    wgpuInstanceDrop(instance);
 
     glfwDestroyWindow(window);
     glfwTerminate();
