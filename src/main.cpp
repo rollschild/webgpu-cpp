@@ -1,5 +1,6 @@
 #include "glfw3webgpu.h"
 #include <GLFW/glfw3.h>
+#include <cstdint>
 // #include <webgpu/webgpu.h>
 #define WEBGPU_CPP_IMPLEMENTATION
 #include "webgpu.hpp"
@@ -444,6 +445,8 @@ int main() {
         var out: VertexOutput;
         out.position = vec4f(in.position, 0.0, 1.0);
         out.color = in.color;
+        let ratio = 640.0 / 480.0;
+        out.position = vec4f(in.position.x, in.position.y * ratio, 0.0, 1.0);
         return out;
     }
 
@@ -583,29 +586,45 @@ int main() {
     // *layout* tells GPU how to interpret this
     // std::vector<float> vertexData{-0.5, -0.5, +0.5, -0.5, +0.0, +0.5};
     // clang-format off
-    std::vector<float> vertexData = {
+    std::vector<float> pointData = {
         // x0,   y0,  r0,  g0,  b0
         -0.5,   -0.5, 1.0, 0.0, 0.0, 
         // x1,   y1,  r1,  g1,  b1
         +0.5,   -0.5, 0.0, 1.0, 0.0,
-        +0.0,   +0.5, 0.0, 0.0, 1.0,
-        -0.55f, -0.5, 1.0, 1.0, 0.0,
-        -0.05f, +0.5, 1.0, 0.0, 1.0,
-        -0.55f, +0.5, 0.0, 1.0, 1.0,
+        +0.5,   +0.5, 0.0, 0.0, 1.0,
+        -0.5,   +0.5, 1.0, 1.0, 1.0,
     };
 
     // clang-format on
-    int vertexCount = static_cast<int>(vertexData.size() / 5);
+    // int vertexCount = static_cast<int>(vertexData.size() / 5);
 
     // Create GPU vertex buffer
     BufferDescriptor bufferDesc;
-    bufferDesc.size = vertexData.size() * sizeof(float);
+    bufferDesc.size = pointData.size() * sizeof(float);
     bufferDesc.usage = BufferUsage::CopyDst | BufferUsage::Vertex;
     bufferDesc.mappedAtCreation = false;
     Buffer vertexBuffer = device.createBuffer(bufferDesc);
 
     // Upload geometry data to buffer
-    queue.writeBuffer(vertexBuffer, 0, vertexData.data(), bufferDesc.size);
+    queue.writeBuffer(vertexBuffer, 0, pointData.data(), bufferDesc.size);
+
+    // Index buffer
+    // A list of indices referencing positions in `pointData`
+    // clang-format off
+    std::vector<uint16_t> indexData = {
+        0, 1, 2, // Triangle #0
+        0, 2, 3  // Triangle #1
+    };
+
+    // clang-format on
+    int indexCount = static_cast<int>(indexData.size());
+
+    // Create index buffer
+    bufferDesc.size = indexData.size() * sizeof(float);
+    bufferDesc.usage = BufferUsage::CopyDst | BufferUsage::Index;
+    bufferDesc.mappedAtCreation = false;
+    Buffer indexBuffer = device.createBuffer(bufferDesc);
+    queue.writeBuffer(indexBuffer, 0, indexData.data(), bufferDesc.size);
 
     while (!glfwWindowShouldClose(window)) {
         glfwPollEvents();
@@ -678,9 +697,12 @@ int main() {
         // In its overall pipeline, draw a triangle
         renderPass.setPipeline(pipeline);
         renderPass.setVertexBuffer(0, vertexBuffer, 0,
-                                   vertexData.size() * sizeof(float));
+                                   pointData.size() * sizeof(float));
+        renderPass.setIndexBuffer(indexBuffer, IndexFormat::Uint16, 0,
+                                  indexData.size() * sizeof(uint16_t));
         // Draw 1 instance of a 3-vertice shape
-        renderPass.draw(vertexCount, 1, 0, 0);
+        // renderPass.draw(vertexCount, 1, 0, 0);
+        renderPass.drawIndexed(indexCount, 1, 0, 0, 0);
         // directly end the pass without any other command
         renderPass.end();
 

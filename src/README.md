@@ -324,4 +324,11 @@ navigator.gpu.requestAdapter(options).then(onAdapterRequestSuccess);
 - Need to change `requiredLimits.limits.maxVertexBuffers`
 - This leads to multiple GPU buffers
   - multiple `queue.writeBuffer()`
-  -
+
+## Index Buffer
+
+- **Index buffer** - separate list of vertex attributes from the actual order in which they are connected
+- Index data must be stored in GPU-side buffer
+- Indices are _relative to_ the window's dimentions
+  - fixed by multiplying one of the coordinates by the ratio of the window (640/480)
+-
