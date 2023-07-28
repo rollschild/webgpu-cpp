@@ -1,6 +1,8 @@
 .ccls-cache/
 .cache/
 build/
+build-dev/
+build-release/
 testing/Testing/
 
 # Prerequisites

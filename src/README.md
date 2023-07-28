@@ -331,4 +331,18 @@ navigator.gpu.requestAdapter(options).then(onAdapterRequestSuccess);
 - Index data must be stored in GPU-side buffer
 - Indices are _relative to_ the window's dimentions
   - fixed by multiplying one of the coordinates by the ratio of the window (640/480)
--
+- `CAMKE_CURRENT_SOURCE_DIR`
+- `CMAKE_BUILD_TYPE`
+  - a built-in option of CMake
+  - commonly used
+  - set it to `Debug` to compile the program with **debugging symbols**
+    - slower and heavier executable
+  - set it to `Release` - no debugging safe-guard
+    - faster and lightweight executable
+- Color Space Issue
+  - the colors expressed in a given space are _inerpreted differently_
+  - **color space**: how are the 256 possible colors distributed along the _continuous_ range of light intensity
+    - **linear**
+    - **sRGB**
+  - WebGPU assumes that colors output by the fragment shader are linear, so it does an extra linear to sRGB conversion
+- ****Gamma Correction**** (or ****Tone Mapping****) - conversion from linear to non-linear color scale

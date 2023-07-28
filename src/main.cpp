@@ -1,6 +1,10 @@
 #include "glfw3webgpu.h"
 #include <GLFW/glfw3.h>
 #include <cstdint>
+#include <filesystem>
+#include <fstream>
+#include <sstream>
+#include <string>
 // #include <webgpu/webgpu.h>
 #define WEBGPU_CPP_IMPLEMENTATION
 #include "webgpu.hpp"
@@ -12,6 +16,97 @@
 #include <vector>
 
 using namespace wgpu;
+
+namespace fs = std::filesystem;
+
+bool loadGeometry(const fs::path &path, std::vector<float> &pointData,
+                  std::vector<uint16_t> &indexData) {
+    std::ifstream file(path);
+    if (!file.is_open()) {
+        return false;
+    }
+
+    pointData.clear();
+    indexData.clear();
+
+    enum class Section {
+        None,
+        Points,
+        Indices,
+    };
+    Section currentSection = Section::None;
+
+    float value;
+    uint16_t index;
+    std::string line{};
+    while (!file.eof()) {
+        std::getline(file, line);
+
+        // fix the `CRLF` problem
+        if (!line.empty() && line.back() == '\r') {
+            line.pop_back();
+        }
+
+        if (line == "[points]") {
+            currentSection = Section::Points;
+        } else if (line == "[indices]") {
+            currentSection = Section::Indices;
+        } else if (line[0] == '#' || line.empty()) {
+            // Do nothing
+        } else if (currentSection == Section::Points) {
+            std::istringstream iss(line);
+            // Get x, y, r, g, b
+            for (int i = 0; i < 5; ++i) {
+                iss >> value;
+                pointData.push_back(value);
+            }
+        } else if (currentSection == Section::Indices) {
+            std::istringstream iss(line);
+            // Get corners #0, #1, and #2
+            for (int i = 0; i < 3; ++i) {
+                iss >> index;
+                indexData.push_back(index);
+            }
+        }
+    }
+
+    return true;
+}
+
+ShaderModule loadShaderModule(const fs::path &path, Device device) {
+    // input operations on file-based systems
+    std::ifstream file(path);
+    if (!file.is_open()) {
+        return nullptr;
+    }
+
+    // the following two lines of code basically tires to get the length of the
+    // code (text) in the file, in terms of number of characters
+    file.seekg(0, std::ios::end);
+    size_t size = file.tellg();
+    // construct a sring of size `size`, with all `' '` characters
+    std::string shaderSource(size, ' ');
+    file.seekg(0);
+    // read `size` number of characters to char array pointed to by
+    // `shaderSource.data()`
+    file.read(shaderSource.data(), size);
+    ShaderModuleWGSLDescriptor shaderCodeDesc{};
+    shaderCodeDesc.chain.next = nullptr;
+    shaderCodeDesc.chain.sType = SType::ShaderModuleWGSLDescriptor;
+    ShaderModuleDescriptor shaderDesc{};
+#ifdef WEBGPU_BACKEND_WGPU
+    shaderDesc.hintCount = 0;
+    shaderDesc.hints = nullptr;
+    shaderCodeDesc.code = shaderSource.c_str();
+#else
+    shaderCodeDesc.source = shaderSource;
+#endif
+    shaderDesc.hintCount = 0;
+    shaderDesc.hints = nullptr;
+    shaderDesc.nextInChain = &shaderCodeDesc.chain;
+
+    return device.createShaderModule(shaderDesc);
+}
 
 /*
  * Util function to get a WebGPU adapter
@@ -25,13 +120,11 @@ using namespace wgpu;
     UserData userData;
 
     auto onAdapterRequestEnded = [](WGPURequestAdapterStatus status,
-                                    WGPUAdapter adapter, char const *message,
-                                    void *ptrUserData) {
-        UserData &userData = *reinterpret_cast<UserData *>(ptrUserData);
-        if (status == WGPURequestAdapterStatus_Success) {
-            std::cout << "Successfully found adapter: " << adapter << std::endl;
-            userData.adapter = adapter;
-        } else {
+                                    WGPUAdapter adapter, char const
+*message, void *ptrUserData) { UserData &userData =
+*reinterpret_cast<UserData *>(ptrUserData); if (status ==
+WGPURequestAdapterStatus_Success) { std::cout << "Successfully found
+adapter: " << adapter << std::endl; userData.adapter = adapter; } else {
             std::cout << "Could NOT get WebGPU adapter: " << message
                       << std::endl;
         }
@@ -86,31 +179,32 @@ using namespace wgpu;
         std::cout << " - maxSamplersPerShaderStage: "
                   << limits.limits.maxSamplersPerShaderStage << std::endl;
         std::cout << " - maxStorageBuffersPerShaderStage: "
-                  << limits.limits.maxStorageBuffersPerShaderStage << std::endl;
-        std::cout << " - maxStorageTexturesPerShaderStage: "
+                  << limits.limits.maxStorageBuffersPerShaderStage <<
+std::endl; std::cout << " - maxStorageTexturesPerShaderStage: "
                   << limits.limits.maxStorageTexturesPerShaderStage
                   << std::endl;
         std::cout << " - maxUniformBuffersPerShaderStage: "
-                  << limits.limits.maxUniformBuffersPerShaderStage << std::endl;
-        std::cout << " - maxUniformBufferBindingSize: "
+                  << limits.limits.maxUniformBuffersPerShaderStage <<
+std::endl; std::cout << " - maxUniformBufferBindingSize: "
                   << limits.limits.maxUniformBufferBindingSize << std::endl;
         std::cout << " - maxStorageBufferBindingSize: "
                   << limits.limits.maxStorageBufferBindingSize << std::endl;
         std::cout << " - minUniformBufferOffsetAlignment: "
-                  << limits.limits.minUniformBufferOffsetAlignment << std::endl;
-        std::cout << " - minStorageBufferOffsetAlignment: "
-                  << limits.limits.minStorageBufferOffsetAlignment << std::endl;
-        std::cout << " - maxVertexBuffers: " << limits.limits.maxVertexBuffers
+                  << limits.limits.minUniformBufferOffsetAlignment <<
+std::endl; std::cout << " - minStorageBufferOffsetAlignment: "
+                  << limits.limits.minStorageBufferOffsetAlignment <<
+std::endl; std::cout << " - maxVertexBuffers: " <<
+limits.limits.maxVertexBuffers
                   << std::endl;
         std::cout << " - maxVertexAttributes: "
                   << limits.limits.maxVertexAttributes << std::endl;
         std::cout << " - maxVertexBufferArrayStride: "
                   << limits.limits.maxVertexBufferArrayStride << std::endl;
         std::cout << " - maxInterStageShaderComponents: "
-                  << limits.limits.maxInterStageShaderComponents << std::endl;
-        std::cout << " - maxComputeWorkgroupStorageSize: "
-                  << limits.limits.maxComputeWorkgroupStorageSize << std::endl;
-        std::cout << " - maxComputeInvocationsPerWorkgroup: "
+                  << limits.limits.maxInterStageShaderComponents <<
+std::endl; std::cout << " - maxComputeWorkgroupStorageSize: "
+                  << limits.limits.maxComputeWorkgroupStorageSize <<
+std::endl; std::cout << " - maxComputeInvocationsPerWorkgroup: "
                   << limits.limits.maxComputeInvocationsPerWorkgroup
                   << std::endl;
         std::cout << " - maxComputeWorkgroupSizeX: "
@@ -132,7 +226,8 @@ using namespace wgpu;
     std::cout << " - deviceID: " << properties.deviceID << std::endl;
     std::cout << " - name: " << properties.name << std::endl;
     if (properties.driverDescription) {
-        std::cout << " - driverDescription: " << properties.driverDescription
+        std::cout << " - driverDescription: " <<
+properties.driverDescription
                   << std::endl;
     }
     std::cout << " - adapterType: " << properties.adapterType << std::endl;
@@ -206,31 +301,32 @@ using namespace wgpu;
         std::cout << " - maxSamplersPerShaderStage: "
                   << limits.limits.maxSamplersPerShaderStage << std::endl;
         std::cout << " - maxStorageBuffersPerShaderStage: "
-                  << limits.limits.maxStorageBuffersPerShaderStage << std::endl;
-        std::cout << " - maxStorageTexturesPerShaderStage: "
+                  << limits.limits.maxStorageBuffersPerShaderStage <<
+std::endl; std::cout << " - maxStorageTexturesPerShaderStage: "
                   << limits.limits.maxStorageTexturesPerShaderStage
                   << std::endl;
         std::cout << " - maxUniformBuffersPerShaderStage: "
-                  << limits.limits.maxUniformBuffersPerShaderStage << std::endl;
-        std::cout << " - maxUniformBufferBindingSize: "
+                  << limits.limits.maxUniformBuffersPerShaderStage <<
+std::endl; std::cout << " - maxUniformBufferBindingSize: "
                   << limits.limits.maxUniformBufferBindingSize << std::endl;
         std::cout << " - maxStorageBufferBindingSize: "
                   << limits.limits.maxStorageBufferBindingSize << std::endl;
         std::cout << " - minUniformBufferOffsetAlignment: "
-                  << limits.limits.minUniformBufferOffsetAlignment << std::endl;
-        std::cout << " - minStorageBufferOffsetAlignment: "
-                  << limits.limits.minStorageBufferOffsetAlignment << std::endl;
-        std::cout << " - maxVertexBuffers: " << limits.limits.maxVertexBuffers
+                  << limits.limits.minUniformBufferOffsetAlignment <<
+std::endl; std::cout << " - minStorageBufferOffsetAlignment: "
+                  << limits.limits.minStorageBufferOffsetAlignment <<
+std::endl; std::cout << " - maxVertexBuffers: " <<
+limits.limits.maxVertexBuffers
                   << std::endl;
         std::cout << " - maxVertexAttributes: "
                   << limits.limits.maxVertexAttributes << std::endl;
         std::cout << " - maxVertexBufferArrayStride: "
                   << limits.limits.maxVertexBufferArrayStride << std::endl;
         std::cout << " - maxInterStageShaderComponents: "
-                  << limits.limits.maxInterStageShaderComponents << std::endl;
-        std::cout << " - maxComputeWorkgroupStorageSize: "
-                  << limits.limits.maxComputeWorkgroupStorageSize << std::endl;
-        std::cout << " - maxComputeInvocationsPerWorkgroup: "
+                  << limits.limits.maxInterStageShaderComponents <<
+std::endl; std::cout << " - maxComputeWorkgroupStorageSize: "
+                  << limits.limits.maxComputeWorkgroupStorageSize <<
+std::endl; std::cout << " - maxComputeInvocationsPerWorkgroup: "
                   << limits.limits.maxComputeInvocationsPerWorkgroup
                   << std::endl;
         std::cout << " - maxComputeWorkgroupSizeX: "
@@ -310,7 +406,7 @@ int main() {
     requiredLimits.limits.maxVertexAttributes = 2;
     requiredLimits.limits.maxVertexBuffers = 1;
     // max size of buffer is 6 vertices of 2 float each
-    requiredLimits.limits.maxBufferSize = 6 * 5 * sizeof(float);
+    requiredLimits.limits.maxBufferSize = 15 * 5 * sizeof(float);
     // max stride between 2 consecutive vertices in the vertex buffer
     // what is a stride??
     requiredLimits.limits.maxVertexBufferArrayStride = 5 * sizeof(float);
@@ -372,9 +468,13 @@ int main() {
 // #endif // WEBGPU_BACKEND_DAWN
 #ifdef WEBGPU_BACKEND_WGPU
     TextureFormat swapChainFormat = surface.getPreferredFormat(adapter);
+    // TextureFormat swapChainFormat = TextureFormat::BGRA8Unorm;
 #else
     TextureFormat swapChainFormat = TextureFormat::BGRA8Unorm;
 #endif // WEBGPU_BACKEND_WGPU
+
+    std::cout << "swapChainFormat: " << swapChainFormat
+              << std::endl; // 23 or 24
 
     /* // a WGPUCommandBuffer cannot be manually created
     // a *command encoder* is needed
@@ -421,56 +521,17 @@ int main() {
     SwapChain swapChain = device.createSwapChain(surface, swapChainDesc);
     std::cout << "Swapchain: " << swapChain << std::endl;
 
-    const char *shaderSource = R"(
-    struct VertexInput {
-        @location(0) position: vec2f,
-        @location(1) color: vec3f,
-    };
+    // ShaderModuleWGSLDescriptor shaderCodeDesc;
+    // shaderCodeDesc.chain.next = nullptr;
+    // shaderCodeDesc.chain.sType = SType::ShaderModuleWGSLDescriptor;
+    // ShaderModuleDescriptor shaderDesc{};
+    // shaderDesc.nextInChain = &shaderCodeDesc.chain;
 
-    struct VertexOutput {
-        @builtin(position) position: vec4f,
-        // location here does _NOT_ refer to a vertex attribute 
-        // it means that this field must be handled by the rasterizer
-        // it could also refer to another field of another struct that would be used as input to the fragment shader
-        @location(0) color: vec3f,
-    };
-
-    /*
-     * the `@location(0)` attribute means this input variable is described by the vertex buffer layout at index 0 in the `pipelineDesc.vertex.buffers` array 
-    * type `vec2f` must comply with what is declared in the layout  
-    */
-
-    @vertex
-    fn vs_main(in: VertexInput) -> VertexOutput {
-        var out: VertexOutput;
-        out.position = vec4f(in.position, 0.0, 1.0);
-        out.color = in.color;
-        let ratio = 640.0 / 480.0;
-        out.position = vec4f(in.position.x, in.position.y * ratio, 0.0, 1.0);
-        return out;
-    }
-
-    @fragment
-    fn fs_main(in: VertexOutput) -> @location(0) vec4f {
-        return vec4f(in.color, 1.0);
-    }
-    )";
-
-    ShaderModuleWGSLDescriptor shaderCodeDesc;
-    shaderCodeDesc.chain.next = nullptr;
-    shaderCodeDesc.chain.sType = SType::ShaderModuleWGSLDescriptor;
-    ShaderModuleDescriptor shaderDesc{};
-    shaderDesc.nextInChain = &shaderCodeDesc.chain;
-
-#ifdef WEBGPU_BACKEND_WGPU
-    shaderDesc.hintCount = 0;
-    shaderDesc.hints = nullptr;
-    shaderCodeDesc.code = shaderSource;
-#else
-    shaderCodeDesc.source = shaderSource;
-#endif
-
-    ShaderModule shaderModule = device.createShaderModule(shaderDesc);
+    // ShaderModule shaderModule = device.createShaderModule(shaderDesc);
+    std::cout << "Creating shader module..." << std::endl;
+    ShaderModule shaderModule =
+        loadShaderModule(RESOURCE_DIR "/shader.wgsl", device);
+    std::cout << "Shader module: " << shaderModule << std::endl;
 
     // Vertex fetch
     VertexBufferLayout vertexBufferLayout;
@@ -586,17 +647,25 @@ int main() {
     // *layout* tells GPU how to interpret this
     // std::vector<float> vertexData{-0.5, -0.5, +0.5, -0.5, +0.0, +0.5};
     // clang-format off
-    std::vector<float> pointData = {
+    /* std::vector<float> pointData = {
         // x0,   y0,  r0,  g0,  b0
         -0.5,   -0.5, 1.0, 0.0, 0.0, 
         // x1,   y1,  r1,  g1,  b1
         +0.5,   -0.5, 0.0, 1.0, 0.0,
         +0.5,   +0.5, 0.0, 0.0, 1.0,
         -0.5,   +0.5, 1.0, 1.0, 1.0,
-    };
+    }; */
 
     // clang-format on
     // int vertexCount = static_cast<int>(vertexData.size() / 5);
+
+    std::vector<float> pointData;
+    std::vector<uint16_t> indexData;
+    std::cout << "DIR: " << RESOURCE_DIR << std::endl;
+    if (!loadGeometry(RESOURCE_DIR "/webgpu.txt", pointData, indexData)) {
+        std::cerr << "Could not load geometry!" << std::endl;
+        return 1;
+    }
 
     // Create GPU vertex buffer
     BufferDescriptor bufferDesc;
@@ -611,10 +680,10 @@ int main() {
     // Index buffer
     // A list of indices referencing positions in `pointData`
     // clang-format off
-    std::vector<uint16_t> indexData = {
+    /* std::vector<uint16_t> indexData = {
         0, 1, 2, // Triangle #0
         0, 2, 3  // Triangle #1
-    };
+    }; */
 
     // clang-format on
     int indexCount = static_cast<int>(indexData.size());
